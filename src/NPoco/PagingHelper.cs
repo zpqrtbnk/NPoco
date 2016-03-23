@@ -33,7 +33,7 @@ namespace NPoco
             if (!m.Success) return false;
 
             // Save column list  [and replace with COUNT(*)]
-            Group g = m.Groups[1];
+            var g = m.Groups[1];
             parts.sqlSelectRemoved = sql.Substring(g.Index);
 
             // Look for the last "ORDER BY <whatever>" clause not part of a ROW_NUMBER expression
@@ -46,7 +46,12 @@ namespace NPoco
                 parts.sqlUnordered = rxOrderBy.Replace(parts.sqlUnordered, "", 1, m.Index);
             }
 
-            parts.sqlCount = string.Format(@"SELECT COUNT(*) FROM ({0}) npoco_tbl", parts.sqlUnordered);
+            // beware! that can turn a perfectly valid SELECT * into something that fails
+            // because "The column 'whatever' was specified multiple times for 'npoco_tbl'".
+            // eg "SELECT a.x, b.x FROM ..." is valid but "FROM (SELECT a.x, b.x FROM ...) npoco_tbl" is NOT
+            // which means that such conflicts should generally be avoided
+
+            parts.sqlCount = $@"SELECT COUNT(*) FROM ({parts.sqlUnordered}) npoco_tbl";
 
             return true;
         }

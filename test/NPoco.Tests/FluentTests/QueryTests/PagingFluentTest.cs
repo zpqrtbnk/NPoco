@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using NPoco.Tests.Common;
 using NUnit.Framework;
 
@@ -124,5 +127,67 @@ namespace NPoco.Tests.FluentTests.QueryTests
             Assert.AreEqual(page.TotalItems, 15);
             Assert.AreEqual(page.TotalPages, 3);
         }
+
+        [Test]
+        public void Page_MultiPoco_Conflict()
+        {
+            // works, fetches ConflictCustomer1 object with referenced ConflictCustomer2
+            var fetch = Database.Fetch<ConflictCustomer1>(@"SELECT
+Users.UserId UserId, Users.Name Name, ExtraUserInfos.UserId AS UserId, ExtraUserInfos.Email AS Email
+FROM Users
+INNER JOIN ExtraUserInfos ON Users.UserId = ExtraUserInfos.UserId");
+
+            //Console.WriteLine();
+            //foreach (var x in fetch)
+            //    Console.WriteLine(x.UserId + " " + x.Name + " " + x.ConflictCustomer2.UserId + " " + x.ConflictCustomer2.Email);
+            AssertConflictCustomers(fetch);
+
+            // works, fetches ConflictCustomer1 object with referenced ConflictCustomer2
+            fetch = Database.Fetch<ConflictCustomer1>(@"SELECT
+Users.UserId UserId, Users.Name Name, ExtraUserInfos.UserId AS ConflictCustomer2__UserId, ExtraUserInfos.Email AS ConflictCustomer2__Email
+FROM Users
+INNER JOIN ExtraUserInfos ON Users.UserId = ExtraUserInfos.UserId");
+
+            //Console.WriteLine();
+            //foreach (var x in fetch)
+            //    Console.WriteLine(x.UserId + " " + x.Name + " " + x.ConflictCustomer2.UserId + " " + x.ConflictCustomer2.Email);
+            AssertConflictCustomers(fetch);
+
+            // works,
+            // but "ConflictCustomer2__" is required else error, duplicate "UserId" field in temp table
+            var page = Database.Page<ConflictCustomer1>(2, 5, @"SELECT
+Users.UserId, Users.Name, ExtraUserInfos.UserId AS ConflictCustomer2__UserId, ExtraUserInfos.Email AS ConflictCustomer2__Email
+FROM Users
+INNER JOIN ExtraUserInfos ON Users.UserId = ExtraUserInfos.UserId");
+
+            AssertConflictCustomers(page.Items);
+        }
+
+        private void AssertConflictCustomers(IEnumerable<ConflictCustomer1> items)
+        {
+            foreach (var x in items)
+            {
+                var cust = InMemoryUsers.FirstOrDefault(u => x.Name == u.Name);
+                if (cust == null) Assert.Fail("Could not find user '" + x.Name + "' in InMemoryUsers.");
+                var xtra = InMemoryExtraUserInfos.FirstOrDefault(u => x.UserId == u.UserId);
+                if (xtra == null) Assert.Fail("Could not find user '" + x.Name + "' in InMemoryExtraUserInfos.");
+                if (xtra.Email != x.ConflictCustomer2.Email) Assert.Fail("Email doesn't match for user '" + x.Name + "' in InMemoryExtraUserInfos.");
+            }
+        }
+    }
+
+    public class ConflictCustomer1
+    {
+        public int UserId { get; set; }
+        public string Name { get; set; }
+        [Reference]
+        public ConflictCustomer2 ConflictCustomer2 { get; set; }
+    }
+
+    public class ConflictCustomer2
+    {
+        public int UserId { get; set; }
+        public string Email { get; set; }
+
     }
 }
